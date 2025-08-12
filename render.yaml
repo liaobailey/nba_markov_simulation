@@ -1,6 +1,7 @@
 services:
+  # Backend API Service
   - type: web
-    name: nba-transition-adjustments
+    name: nba-transition-adjustments-api
     env: python
     plan: starter
     buildCommand: pip install -r backend/requirements.txt
@@ -14,3 +15,16 @@ services:
       name: nba-data
       mountPath: /opt/render/project/src/backend
       sizeGB: 10
+
+  # Frontend Website Service
+  - type: web
+    name: nba-markov-simulation-frontend
+    env: node
+    plan: starter
+    buildCommand: cd frontend && npm install && npm run build
+    startCommand: cd frontend && npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 18.17.0
+      - key: REACT_APP_API_URL
+        value: https://nba-transition-adjustments-api.onrender.com
