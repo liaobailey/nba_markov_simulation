@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: nba-transition-adjustments
+    env: python
+    plan: starter
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.9.16
+      - key: DB_PATH
+        value: /opt/render/project/src/backend/nba_clean.db
+    disk:
+      name: nba-data
+      mountPath: /opt/render/project/src/backend
+      sizeGB: 10
