@@ -38,8 +38,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize DuckDB connection to the existing database
-DB_PATH = "/Users/baileyliao/PycharmProjects/cleannbadata/nba_clean.db"
+# Initialize DuckDB connection to the database
+DB_PATH = os.getenv("DB_PATH", "nba_clean.db")
 
 try:
     conn = duckdb.connect(DB_PATH, read_only=True)
@@ -551,7 +551,7 @@ async def generate_adjustments(request: AdjustmentRequest):
     """Generate transition matrix adjustments for a specific team"""
     try:
         # Connect to database
-        DB_PATH = os.getenv("DB_PATH", "/Users/baileyliao/PycharmProjects/cleannbadata/nba_clean.db")
+        DB_PATH = os.getenv("DB_PATH", "nba_clean.db")
         conn = duckdb.connect(DB_PATH, read_only=True)
         
         # Get baseline data
@@ -621,7 +621,7 @@ async def generate_adjustments(request: AdjustmentRequest):
 async def get_teams(season: str = "2024-25"):
     """Get list of available teams"""
     try:
-        DB_PATH = os.getenv("DB_PATH", "/Users/baileyliao/PycharmProjects/cleannbadata/nba_clean.db")
+        DB_PATH = os.getenv("DB_PATH", "nba_clean.db")
         conn = duckdb.connect(DB_PATH, read_only=True)
         
         teams_query = "SELECT DISTINCT team FROM agg_team_txn_cnts WHERE season = ? ORDER BY team"

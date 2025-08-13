@@ -4,13 +4,25 @@ services:
     name: nba-transition-adjustments-api
     env: python
     plan: starter
-    buildCommand: pip install -r backend/requirements.txt
+    buildCommand: |
+      pip install -r backend/requirements.txt
+      cd backend && python download_db.py
     startCommand: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PYTHON_VERSION
         value: 3.9.16
       - key: DB_PATH
-        value: /opt/render/project/src/backend/nba_clean.db
+        value: backend/nba_clean.db
+      - key: S3_BUCKET_NAME
+        value: nba-duckdb-bucket
+      - key: S3_DB_KEY
+        value: nba_clean.db
+                   - key: AWS_ACCESS_KEY_ID
+               value: ${AWS_ACCESS_KEY_ID}
+             - key: AWS_SECRET_ACCESS_KEY
+               value: ${AWS_SECRET_ACCESS_KEY}
+      - key: AWS_DEFAULT_REGION
+        value: us-east-1
     disk:
       name: nba-data
       mountPath: /opt/render/project/src/backend
