@@ -321,33 +321,37 @@ async def simulate_season_stream(request: dict):
         if not team:
             raise HTTPException(status_code=400, detail="Team is required")
         
-        # Check cache for transition metrics
-        cache_key = f"{team}_{season}_transition_metrics"
-        if cache_key not in _metrics_cache:
-            print(f"Fetching transition matrix adjustment metrics for team: {team}")
+        # Check cache for transition metrics (what makes seasons 2-10 fast)
+        cache_key = f"{team}_{season}_transition"
+        if cache_key not in _transition_matrix_cache:
+            print(f"Loading transition matrix for {team} - first season will be slower")
             transition_metrics_response = await get_transition_matrix_adjustment_metrics(team, season)
-            _metrics_cache[cache_key] = transition_metrics_response.get('metrics', {})
+            transition_metrics = transition_metrics_response.get('metrics', {})
+            # Cache for seasons 2-10 to be fast
+            _transition_matrix_cache[cache_key] = transition_metrics
+            print(f"Transition matrix cached for {team} - seasons 2-10 will be fast!")
         else:
-            print(f"Using cached transition metrics for team: {team}")
+            print(f"Using cached transition matrix for {team} - seasons 2-10 will be fast!")
+            transition_metrics = _transition_matrix_cache[cache_key]
         
-        transition_metrics = _metrics_cache[cache_key]
         print(f"Got transition metrics: {list(transition_metrics.keys())}")
         
-        # Check cache for season metrics
-        season_cache_key = f"season_metrics_{season}"
-        if season_cache_key not in _metrics_cache:
-            print(f"Fetching season metrics for team: {team}")
+        # Check cache for season metrics (what makes seasons 2-10 fast)
+        metrics_cache_key = f"{team}_{season}_metrics"
+        if metrics_cache_key not in _baseline_metrics_cache:
+            print(f"Loading season metrics for {team} - first season will be slower")
             season_metrics_response = await get_season_metrics(season)
-            _metrics_cache[season_cache_key] = season_metrics_response
+            team_metrics = None
+            for metric in season_metrics_response.get('metrics', []):
+                if metric['team_abbreviation'] == team:
+                    team_metrics = metric
+                    break
+            # Cache for seasons 2-10 to be fast
+            _baseline_metrics_cache[metrics_cache_key] = team_metrics
+            print(f"Season metrics cached for {team} - seasons 2-10 will be fast!")
         else:
-            print(f"Using cached season metrics")
-        
-        season_metrics_response = _metrics_cache[season_cache_key]
-        team_metrics = None
-        for metric in season_metrics_response.get('metrics', []):
-            if metric['team_abbreviation'] == team:
-                team_metrics = metric
-                break
+            print(f"Using cached season metrics for {team} - seasons 2-10 will be fast!")
+            team_metrics = _baseline_metrics_cache[metrics_cache_key]
         
         if not team_metrics:
             raise HTTPException(status_code=404, detail=f"No season metrics found for team: {team}")
