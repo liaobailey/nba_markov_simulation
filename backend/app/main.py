@@ -1,6 +1,5 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import StreamingResponse, FileResponse
 import duckdb
 import pandas as pd
@@ -25,14 +24,9 @@ _metrics_cache = {}
 # Global cancellation tracking
 _active_simulations = {}
 
-# Additional caches for performance
-_teams_cache = {}
-_baseline_wins_cache = {}
-_season_metrics_cache = {}
-_transition_metrics_cache = {}
-_team_validation_cache = {}
-
-# Simulation data cache - this is what we need for the local performance!
+# Simulation performance caches (what made seasons 2-10 fast locally)
+_transition_matrix_cache = {}
+_baseline_metrics_cache = {}
 _simulation_data_cache = {}
 
 # Configure CORS
@@ -49,9 +43,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Add GZip compression for faster responses
-app.add_middleware(GZipMiddleware, minimum_size=500)  # Lower threshold for $7 tier
-
 # Initialize DuckDB connection to the database
 DB_PATH = os.getenv("DB_PATH", "nba_clean.db")
 
@@ -64,11 +55,6 @@ def get_db_connection():
     if conn is None:
         try:
             conn = duckdb.connect(DB_PATH, read_only=True)
-            # Conservative performance optimizations for $7 tier
-            conn.execute("SET enable_progress_bar=false")
-            conn.execute("SET threads=3")  # Conservative thread count
-            conn.execute("SET memory_limit='1GB'")  # Conservative memory limit
-            print(f"Database connected with conservative optimizations for $7 tier")
         except Exception as e:
             print(f"Error connecting to database: {e}")
             raise
@@ -119,18 +105,8 @@ async def cancel_simulation(request: dict):
 async def get_teams():
     """Get list of available teams"""
     try:
-        # Check cache first
-        if 'teams' in _teams_cache:
-            return {"teams": _teams_cache['teams'], "season": "2024-25"}
-        
-        # Fetch from database
         teams = get_db_connection().execute("SELECT DISTINCT team FROM agg_team_txn_cnts ORDER BY team").fetchdf()
-        teams_list = teams['team'].tolist()
-        
-        # Cache the result
-        _teams_cache['teams'] = teams_list
-        
-        return {"teams": teams_list, "season": "2024-25"}
+        return {"teams": teams['team'].tolist()}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching teams: {str(e)}")
 
@@ -138,11 +114,6 @@ async def get_teams():
 async def get_baseline_wins(season: str = '2024-25'):
     """Get baseline simulated wins for all teams from database for a specific season"""
     try:
-        # Check cache first
-        cache_key = f'baseline_wins_{season}'
-        if cache_key in _baseline_wins_cache:
-            return {"baseline_wins": _baseline_wins_cache[cache_key]}
-        
         query = "SELECT team, wins FROM estimated_wins_simulated WHERE season = ? ORDER BY team"
         result = get_db_connection().execute(query, [season]).fetchdf()
         
@@ -150,9 +121,6 @@ async def get_baseline_wins(season: str = '2024-25'):
         baseline_wins = {}
         for _, row in result.iterrows():
             baseline_wins[row['team']] = float(row['wins'])
-        
-        # Cache the result
-        _baseline_wins_cache[cache_key] = baseline_wins
         
         return {"baseline_wins": baseline_wins}
     except Exception as e:
@@ -174,10 +142,6 @@ async def get_available_seasons():
 async def get_season_metrics(season: str = '2024-25'):
     """Get season-end team metrics for a specific season"""
     try:
-        # Check cache first
-        if season in _season_metrics_cache:
-            return _season_metrics_cache[season]
-        
         query = """
         with cte_box as (
         select season, team_abbreviation, fga-fg3a as fg2a, fgm-fg3m as fg2m, fg2m/fg2a as fg2_pct, fg3a, fg3m, fg3_pct, fta, ftm, ft_pct, dreb, oreb, tov
@@ -221,13 +185,10 @@ async def get_season_metrics(season: str = '2024-25'):
                         'max': float(values.max())
                     }
         
-        # Cache the result
-        _season_metrics_cache[season] = {
+        return {
             "metrics": result.to_dict('records'),
             "stats": metrics_stats
         }
-        
-        return _season_metrics_cache[season]
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching season metrics: {str(e)}")
 
@@ -235,21 +196,13 @@ async def get_season_metrics(season: str = '2024-25'):
 async def get_transition_matrix_adjustment_metrics(team: str, season: str = '2024-25'):
     """Get transition matrix adjustment metrics for a specific team and season"""
     try:
-        # Check cache first
-        cache_key = f'transition_metrics_{team}_{season}'
-        if cache_key in _transition_metrics_cache:
-            return {"metrics": _transition_metrics_cache[cache_key]}
-        
         query = "SELECT * FROM team_transition_matrix_adjustments_rates WHERE team = ? AND season = ?"
         result = get_db_connection().execute(query, [team, season]).fetchdf()
         
         if result.empty:
             raise HTTPException(status_code=404, detail=f"No data found for team: {team} and season: {season}")
         
-        # Cache the result
-        _transition_metrics_cache[cache_key] = result.to_dict('records')[0]
-        
-        return {"metrics": _transition_metrics_cache[cache_key]}
+        return {"metrics": result.to_dict('records')[0]}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching transition matrix adjustment metrics: {str(e)}")
 
@@ -264,30 +217,38 @@ async def simulate_season(request: dict):
         if not team:
             raise HTTPException(status_code=400, detail="Team parameter is required")
         
-        # Check simulation cache first - this is the key to local performance!
-        cache_key = f"simulation_{team}_{season}_{num_seasons}"
-        if cache_key in _simulation_data_cache:
-            print(f"🎯 Using cached simulation data for {team} - this should be fast!")
-            return _simulation_data_cache[cache_key]
-        
-        print(f"🔄 Building fresh simulation data for {team} - this will be slower...")
-        
         # Validate team exists
         team_check = get_db_connection().execute("SELECT COUNT(*) FROM agg_team_txn_cnts WHERE team = ? AND season = ?", [team, season]).fetchone()
         if team_check[0] == 0:
             raise HTTPException(status_code=404, detail=f"Team {team} not found in database for season {season}")
         
-        # Get transition matrix adjustment metrics
-        transition_metrics_response = await get_transition_matrix_adjustment_metrics(team, season)
-        transition_metrics = transition_metrics_response.get('metrics', {})
+        # Check cache first for transition metrics (what made seasons 2-10 fast locally)
+        cache_key = f"{team}_{season}_transition"
+        if cache_key in _transition_matrix_cache:
+            print(f"Using cached transition metrics for {team} - seasons 2-10 will be fast!")
+            transition_metrics = _transition_matrix_cache[cache_key]
+        else:
+            print(f"Loading transition metrics for {team} - first season will be slower")
+            transition_metrics_response = await get_transition_matrix_adjustment_metrics(team, season)
+            transition_metrics = transition_metrics_response.get('metrics', {})
+            # Cache for future seasons
+            _transition_matrix_cache[cache_key] = transition_metrics
         
-        # Get season metrics for additional variables calculation
-        season_metrics_response = await get_season_metrics(season)
-        team_metrics = None
-        for metric in season_metrics_response.get('metrics', []):
-            if metric['team_abbreviation'] == team:
-                team_metrics = metric
-                break
+        # Check cache for season metrics
+        metrics_cache_key = f"{team}_{season}_metrics"
+        if metrics_cache_key in _baseline_metrics_cache:
+            print(f"Using cached season metrics for {team}")
+            team_metrics = _baseline_metrics_cache[metrics_cache_key]
+        else:
+            print(f"Loading season metrics for {team}")
+            season_metrics_response = await get_season_metrics(season)
+            team_metrics = None
+            for metric in season_metrics_response.get('metrics', []):
+                if metric['team_abbreviation'] == team:
+                    team_metrics = metric
+                    break
+            # Cache for future seasons
+            _baseline_metrics_cache[metrics_cache_key] = team_metrics
         
         if not team_metrics:
             raise HTTPException(status_code=404, detail=f"No season metrics found for team: {team}")
@@ -297,6 +258,24 @@ async def simulate_season(request: dict):
         adjusted_metrics = {
             'oreb_pct': team_metrics.get('OREB_PCT', 0),
             'opp_oreb_pct': team_metrics.get('OPP_OREB_PCT', 0)
+        }
+        
+        # Calculate additional variables based on user adjustments
+        # These would normally come from the frontend, but for now let's calculate them
+        # based on the difference between adjusted and original metrics
+        original_metrics = {
+            'fg2_pct': team_metrics.get('fg2_pct', 0),
+            'FG3_PCT': team_metrics.get('FG3_PCT', 0),
+            'FT_PCT': team_metrics.get('FT_PCT', 0),
+            'OREB_PCT': team_metrics.get('OREB_PCT', 0),
+            'dreb_pct': team_metrics.get('dreb_pct', 0),
+            'TM_TOV_PCT': team_metrics.get('TM_TOV_PCT', 0),
+            'opp_fg2_pct': team_metrics.get('opp_fg2_pct', 0),
+            'OPP_FG3_PCT': team_metrics.get('OPP_FG3_PCT', 0),
+            'OPP_FT_PCT': team_metrics.get('OPP_FT_PCT', 0),
+            'OPP_OREB_PCT': team_metrics.get('OPP_OREB_PCT', 0),
+            'opp_dreb_pct': team_metrics.get('opp_dreb_pct', 0),
+            'OPP_TOV_PCT': team_metrics.get('OPP_TOV_PCT', 0)
         }
         
         # Default to no adjustments (all values set to 0)
@@ -320,10 +299,6 @@ async def simulate_season(request: dict):
         results = simulator.simulate_multiple_seasons(
             team, num_seasons, additional_vars, transition_metrics, adjusted_metrics
         )
-        
-        # Cache the results for future calls
-        _simulation_data_cache[cache_key] = results
-        print(f"💾 Cached simulation data for {team} - future calls will be fast!")
         
         return results
         
