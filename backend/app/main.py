@@ -65,7 +65,6 @@ def get_db_connection():
             conn.execute("SET enable_progress_bar=false")
             conn.execute("SET threads=3")  # Conservative thread count
             conn.execute("SET memory_limit='1GB'")  # Conservative memory limit
-            conn.execute("SET enable_optimizer=true")
             print(f"Database connected with conservative optimizations for $7 tier")
         except Exception as e:
             print(f"Error connecting to database: {e}")
