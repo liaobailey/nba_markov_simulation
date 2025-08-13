@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import StreamingResponse, FileResponse
 import duckdb
 import pandas as pd
@@ -45,6 +46,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Add GZip compression for faster responses
+app.add_middleware(GZipMiddleware, minimum_size=500)  # Lower threshold for $7 tier
+
 # Initialize DuckDB connection to the database
 DB_PATH = os.getenv("DB_PATH", "nba_clean.db")
 
@@ -57,10 +61,13 @@ def get_db_connection():
     if conn is None:
         try:
             conn = duckdb.connect(DB_PATH, read_only=True)
-            # Simple performance optimizations
+            # Aggressive performance optimizations for $7 tier
             conn.execute("SET enable_progress_bar=false")
-            conn.execute("SET threads=2")
-            print(f"Database connected with basic optimizations")
+            conn.execute("SET threads=4")  # More threads with $7 tier
+            conn.execute("SET memory_limit='2GB'")  # More memory with $7 tier
+            conn.execute("SET enable_optimizer=true")
+            conn.execute("SET preserve_insertion_order=false")
+            print(f"Database connected with aggressive optimizations for $7 tier")
         except Exception as e:
             print(f"Error connecting to database: {e}")
             raise

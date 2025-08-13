@@ -7,7 +7,7 @@ services:
     buildCommand: |
       pip install -r backend/requirements.txt
       cd backend && python download_db.py
-    startCommand: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    startCommand: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 6 --limit-concurrency 2000
     envVars:
       - key: PYTHON_VERSION
         value: 3.9.16

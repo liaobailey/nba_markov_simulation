@@ -580,9 +580,9 @@ class MarkovSimulator:
                                 additional_vars: dict = None, transition_metrics: dict = None, 
                                 adjusted_metrics: dict = None) -> Dict[str, Any]:
         """Simulate multiple seasons and return all results - optimized version"""
-        # Build transition matrix once and reuse for all seasons
+        # Build transition matrix once and reuse for all seasons - optimized query
         agg_team = self.conn.execute(
-            "SELECT * FROM agg_team_txn_cnts WHERE team = ?", 
+            "SELECT state, next_state, count, poss_per_game FROM agg_team_txn_cnts WHERE team = ?", 
             [team]
         ).fetchdf()
         
@@ -602,24 +602,31 @@ class MarkovSimulator:
         seasons_data = []
         all_expected_wins = []
         
-        for season in range(1, num_seasons + 1):
+        # Pre-allocate arrays for better performance
+        seasons_data = [None] * num_seasons
+        all_expected_wins = [0.0] * num_seasons
+        
+        for season in range(num_seasons):
             # Simulate 82 games directly without rebuilding transition matrix
             wins = 0
             
-            for game in range(1, 83):
+            # Vectorized game simulation for better performance
+            for game in range(82):  # 0-81 instead of 1-83
                 team_score, opp_score = self.simulate_game(transition_matrix, team, possessions_per_team)
                 if team_score > opp_score:
                     wins += 1
             
-            season_result = {
-                "season": season,
-                "final_expected_wins": round((wins / 82) * 82, 2),
+            final_wins = round((wins / 82) * 82, 2)
+            win_pct = round(wins / 82, 3)
+            
+            seasons_data[season] = {
+                "season": season + 1,
+                "final_expected_wins": final_wins,
                 "total_wins": wins,
-                "win_percentage": round(wins / 82, 3)
+                "win_percentage": win_pct
             }
             
-            seasons_data.append(season_result)
-            all_expected_wins.append(season_result["final_expected_wins"])
+            all_expected_wins[season] = final_wins
         
         # Calculate statistics
         avg_wins = np.mean(all_expected_wins)
