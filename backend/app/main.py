@@ -30,7 +30,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "http://localhost:3001",
-        "https://nba-markov-simulation-frontend.onrender.com",
+        "https://nba-markov-simulation.onrender.com",
         "https://*.onrender.com"
     ],
     allow_credentials=True,
