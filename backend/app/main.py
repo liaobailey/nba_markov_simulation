@@ -32,6 +32,9 @@ _season_metrics_cache = {}
 _transition_metrics_cache = {}
 _team_validation_cache = {}
 
+# Simulation data cache - this is what we need for the local performance!
+_simulation_data_cache = {}
+
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
@@ -261,6 +264,14 @@ async def simulate_season(request: dict):
         if not team:
             raise HTTPException(status_code=400, detail="Team parameter is required")
         
+        # Check simulation cache first - this is the key to local performance!
+        cache_key = f"simulation_{team}_{season}_{num_seasons}"
+        if cache_key in _simulation_data_cache:
+            print(f"🎯 Using cached simulation data for {team} - this should be fast!")
+            return _simulation_data_cache[cache_key]
+        
+        print(f"🔄 Building fresh simulation data for {team} - this will be slower...")
+        
         # Validate team exists
         team_check = get_db_connection().execute("SELECT COUNT(*) FROM agg_team_txn_cnts WHERE team = ? AND season = ?", [team, season]).fetchone()
         if team_check[0] == 0:
@@ -288,24 +299,6 @@ async def simulate_season(request: dict):
             'opp_oreb_pct': team_metrics.get('OPP_OREB_PCT', 0)
         }
         
-        # Calculate additional variables based on user adjustments
-        # These would normally come from the frontend, but for now let's calculate them
-        # based on the difference between adjusted and original metrics
-        original_metrics = {
-            'fg2_pct': team_metrics.get('fg2_pct', 0),
-            'FG3_PCT': team_metrics.get('FG3_PCT', 0),
-            'FT_PCT': team_metrics.get('FT_PCT', 0),
-            'OREB_PCT': team_metrics.get('OREB_PCT', 0),
-            'dreb_pct': team_metrics.get('dreb_pct', 0),
-            'TM_TOV_PCT': team_metrics.get('TM_TOV_PCT', 0),
-            'opp_fg2_pct': team_metrics.get('opp_fg2_pct', 0),
-            'OPP_FG3_PCT': team_metrics.get('OPP_FG3_PCT', 0),
-            'OPP_FT_PCT': team_metrics.get('OPP_FT_PCT', 0),
-            'OPP_OREB_PCT': team_metrics.get('OPP_OREB_PCT', 0),
-            'opp_dreb_pct': team_metrics.get('opp_dreb_pct', 0),
-            'OPP_TOV_PCT': team_metrics.get('OPP_TOV_PCT', 0)
-        }
-        
         # Default to no adjustments (all values set to 0)
         additional_vars = {
             'additional_shots_made_2': 0,  # No change to 2pt shots
@@ -327,6 +320,10 @@ async def simulate_season(request: dict):
         results = simulator.simulate_multiple_seasons(
             team, num_seasons, additional_vars, transition_metrics, adjusted_metrics
         )
+        
+        # Cache the results for future calls
+        _simulation_data_cache[cache_key] = results
+        print(f"💾 Cached simulation data for {team} - future calls will be fast!")
         
         return results
         
