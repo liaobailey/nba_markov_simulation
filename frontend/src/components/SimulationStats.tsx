@@ -13,8 +13,6 @@ const SimulationStats: React.FC<SimulationStatsProps> = ({ stats, selectedTeam, 
   const actualWins = TEAM_WINS[selectedTeam] || 0;
   const baselineWinsForTeam = baselineWins[selectedTeam] || 0;
   const difference = stats.average_expected_wins - actualWins;
-  const differenceColor = Math.abs(difference) <= 5 ? 'success.main' : 
-                         difference > 0 ? 'warning.main' : 'error.main';
 
   return (
     <Paper elevation={2} sx={{ p: 3, mb: 3 }}>
