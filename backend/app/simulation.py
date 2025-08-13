@@ -605,28 +605,14 @@ class MarkovSimulator:
         for season in range(1, num_seasons + 1):
             # Simulate 82 games directly without rebuilding transition matrix
             wins = 0
-            games_data = []
             
             for game in range(1, 83):
                 team_score, opp_score = self.simulate_game(transition_matrix, team, possessions_per_team)
                 if team_score > opp_score:
                     wins += 1
-                
-                # Calculate expected wins after this game
-                win_pct = wins / game
-                expected_wins = win_pct * 82
-                
-                games_data.append({
-                    "game": game,
-                    "expected_wins": round(expected_wins, 2),
-                    "team_score": team_score,
-                    "opp_score": opp_score,
-                    "is_win": team_score > opp_score
-                })
             
             season_result = {
                 "season": season,
-                "games": games_data,
                 "final_expected_wins": round((wins / 82) * 82, 2),
                 "total_wins": wins,
                 "win_percentage": round(wins / 82, 3)

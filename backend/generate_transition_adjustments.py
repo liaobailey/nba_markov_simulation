@@ -59,41 +59,33 @@ def get_baseline_data(conn, team: str, season: str) -> Dict[str, Any]:
         
         # Extract the 12 key metrics - using actual column names from database
         team_metrics = {
-            'fg2_pct': metrics.iloc[0].get('fg2_pct', 0.54),
-            'fg3_pct': metrics.iloc[0].get('fg3_pct', 0.36), 
-            'ft_pct': metrics.iloc[0].get('ft_pct', 0.78),
-            'oreb_pct': metrics.iloc[0].get('oreb_pct', 0.28),
-            'dreb_pct': metrics.iloc[0].get('dreb_pct', 0.72),
-            'tov_pct': metrics.iloc[0].get('tm_tov_pct', 0.14),
-            'opp_fg2_pct': metrics.iloc[0].get('opp_fg2_pct', 0.54),
-            'opp_fg3_pct': metrics.iloc[0].get('opp_fg3_pct', 0.36),
-            'opp_ft_pct': metrics.iloc[0].get('opp_ft_pct', 0.78),
-            'opp_oreb_pct': metrics.iloc[0].get('opp_oreb_pct', 0.28),
-            'opp_dreb_pct': metrics.iloc[0].get('opp_dreb_pct', 0.72),
-            'opp_tov_pct': metrics.iloc[0].get('opp_tov_pct', 0.14)
+            'fg2_pct': metrics.iloc[0]['fg2_pct'],
+            'fg3_pct': metrics.iloc[0]['FG3_PCT'], 
+            'ft_pct': metrics.iloc[0]['FT_PCT'],
+            'oreb_pct': metrics.iloc[0]['OREB_PCT'],
+            'dreb_pct': metrics.iloc[0]['dreb_pct'],
+            'tov_pct': metrics.iloc[0]['TM_TOV_PCT'],
+            'opp_fg2_pct': metrics.iloc[0]['opp_fg2_pct'],
+            'opp_fg3_pct': metrics.iloc[0]['OPP_FG3_PCT'],
+            'opp_ft_pct': metrics.iloc[0]['OPP_FT_PCT'],
+            'opp_oreb_pct': metrics.iloc[0]['OPP_OREB_PCT'],
+            'opp_dreb_pct': metrics.iloc[0]['opp_dreb_pct'],
+            'opp_tov_pct': metrics.iloc[0]['OPP_TOV_PCT'],
+            'POSS': metrics.iloc[0]['POSS']
         }
         
         # Create team_attempts from the metrics data
         team_attempts = {
-            'fg2_attempts': int(metrics.iloc[0].get('fg2a', 2000)),
-            'fg3_attempts': int(metrics.iloc[0].get('fg3a', 900)),
-            'ft_attempts': int(metrics.iloc[0].get('fta', 800)),
-            'turnovers': int(metrics.iloc[0].get('tov', 300)),
-            'dreb_attempts': int(metrics.iloc[0].get('dreb', 1200)),
-            'oreb_attempts': int(metrics.iloc[0].get('oreb', 400))
+            'fg2_attempts': int(metrics.iloc[0]['fg2a']),
+            'fg3_attempts': int(metrics.iloc[0]['FG3A']),
+            'ft_attempts': int(metrics.iloc[0]['FTA']),
+            'turnovers': int(metrics.iloc[0]['TOV']),
+            'dreb_attempts': int(metrics.iloc[0]['DREB']),
+            'oreb_attempts': int(metrics.iloc[0]['OREB'])
         }
     else:
-        print(f"    ⚠️  No metrics found, using defaults")
-        team_metrics = {
-            'fg2_pct': 0.54, 'fg3_pct': 0.36, 'ft_pct': 0.78,
-            'oreb_pct': 0.28, 'dreb_pct': 0.72, 'tov_pct': 0.14,
-            'opp_fg2_pct': 0.54, 'opp_fg3_pct': 0.36, 'opp_ft_pct': 0.78,
-            'opp_oreb_pct': 0.28, 'opp_dreb_pct': 0.72, 'opp_tov_pct': 0.14
-        }
-        team_attempts = {
-            'fg2_attempts': 2000, 'fg3_attempts': 900, 'ft_attempts': 800,
-            'turnovers': 300, 'dreb_attempts': 1200, 'oreb_attempts': 400
-        }
+        print(f"    ❌ No metrics found - cannot proceed without data")
+        raise ValueError("No team metrics found in database")
     
     # Convert rates DataFrame to dictionary for transition_metrics
     if not rates.empty:
@@ -101,16 +93,8 @@ def get_baseline_data(conn, team: str, season: str) -> Dict[str, Any]:
         print(f"    ✅ Got transition metrics from rates table")
         print(f"    🔍 Available transition metrics: {list(transition_metrics.keys())}")
     else:
-        print(f"    ⚠️  No transition metrics found, using defaults")
-        transition_metrics = {
-            'per_2pt_made_from_oreb': 0.13,
-            'per_2pt_made_from_offense_start_tov': 0.87,
-            'per_3pt_made_from_oreb': 0.05,
-            'per_3pt_made_from_offense_start_tov': 0.95,
-            'per_ft_made_from_oreb': 0.02,
-            'per_ft_made_from_offense_start': 0.98,
-            'per_ft_made_from_ft_made': 0.0
-        }
+        print(f"    ❌ No transition metrics found - cannot proceed without data")
+        raise ValueError("No transition metrics found in database")
     
     return {
         'transitions': transitions,
@@ -163,7 +147,7 @@ def calculate_additional_variables(team_metrics: Dict[str, float], improved_metr
         'FGM3': team_attempts['fg3_attempts'] * team_metrics['fg3_pct'],
         'FTA': team_attempts['ft_attempts'],
         'FTM': team_attempts['ft_attempts'] * team_metrics['ft_pct'],
-        'POSS': team_attempts['fg2_attempts'] + team_attempts['fg3_attempts'] + team_attempts['turnovers'],  # Approximate
+        'POSS': team_metrics['POSS'],
         'TOV': team_attempts['turnovers'],
         'DREB': team_attempts['dreb_attempts'],
         'OREB': team_attempts['oreb_attempts'],
@@ -323,19 +307,20 @@ def calculate_all_adjustments(team: str, additional_vars: dict,
                             transition_metrics: dict, adjusted_metrics: dict) -> List[Dict]:
     """Calculate all transition adjustments based on user formulas - copied from simulation.py"""
     print(f"    Starting calculate_all_adjustments for team: {team}")
+
     adjustments = []
     
     # Get all the required variables
-    oreb_per = adjusted_metrics.get('oreb_pct', 0)
-    opp_oreb_per = adjusted_metrics.get('opp_oreb_pct', 0)
+    oreb_per = adjusted_metrics['oreb_pct']
+    opp_oreb_per = adjusted_metrics['opp_oreb_pct']
     print(f"    Got adjusted metrics - oreb_per: {oreb_per}, opp_oreb_per: {opp_oreb_per}")
     
     # Team 2pt adjustments
     if 'additional_shots_made_2' in additional_vars:
         print("    Processing 2pt adjustments")
         adj_2pt = additional_vars['additional_shots_made_2']
-        per_2pt_oreb = transition_metrics.get('per_2pt_made_from_oreb', 0)
-        per_2pt_offense = transition_metrics.get('per_2pt_made_from_offense_start_tov', 0)
+        per_2pt_oreb = transition_metrics['per_2pt_made_from_oreb']
+        per_2pt_offense = transition_metrics['per_2pt_made_from_offense_start_tov']
         
         # Debug output for LAC OREB → LAC 2pt Made
         if team == 'LAC':
@@ -361,8 +346,8 @@ def calculate_all_adjustments(team: str, additional_vars: dict,
     if 'additional_shots_made_3' in additional_vars:
         print("    Processing 3pt adjustments")
         adj_3pt = additional_vars['additional_shots_made_3']
-        per_3pt_oreb = transition_metrics.get('per_3pt_made_from_oreb', 0)
-        per_3pt_offense = transition_metrics.get('per_3pt_made_from_offense_start_tov', 0)
+        per_3pt_oreb = transition_metrics['per_3pt_made_from_oreb']
+        per_3pt_offense = transition_metrics['per_3pt_made_from_offense_start_tov']
         
         adjustments.extend([
             {'state': f'{team} Offense Start', 'next_state': f'{team} 3pt Made', 
@@ -383,9 +368,9 @@ def calculate_all_adjustments(team: str, additional_vars: dict,
     if 'additional_shots_made_ft' in additional_vars:
         print("    Processing FT adjustments")
         adj_ft = additional_vars['additional_shots_made_ft']
-        per_ft_oreb = transition_metrics.get('per_ft_made_from_oreb', 0)
-        per_ft_offense = transition_metrics.get('per_ft_made_from_offense_start', 0)
-        per_ft_made = transition_metrics.get('per_ft_made_from_ft_made', 0)
+        per_ft_oreb = transition_metrics['per_ft_made_from_oreb']
+        per_ft_offense = transition_metrics['per_ft_made_from_offense_start']
+        per_ft_made = transition_metrics['per_ft_made_from_ft_made']
         
         adjustments.extend([
             {'state': f'{team} Offense Start', 'next_state': f'{team} FT Made', 
@@ -412,17 +397,17 @@ def calculate_all_adjustments(team: str, additional_vars: dict,
     if 'additional_turnovers' in additional_vars:
         print("    Processing turnover adjustments")
         adj_tov = additional_vars['additional_turnovers']
-        per_tov_oreb = transition_metrics.get('per_turnover_from_oreb', 0)
-        per_2pt_tov = transition_metrics.get('per_2pt_made_from_offense_start_tov', 0)
-        per_3pt_tov = transition_metrics.get('per_3pt_made_from_offense_start_tov', 0)
-        per_ft_tov = transition_metrics.get('per_ft_made_from_offense_start_tov', 0)
-        per_oreb_tov = transition_metrics.get('per_oreb_from_offense_start_tov', 0)
-        per_opp_dreb_tov = transition_metrics.get('per_opp_dreb_from_offense_start_tov', 0)
-        per_2pt_oreb_tov = transition_metrics.get('per_2pt_made_from_oreb_tov', 0)
-        per_3pt_oreb_tov = transition_metrics.get('per_3pt_made_from_oreb_tov', 0)
-        per_ft_oreb_tov = transition_metrics.get('per_ft_made_from_oreb_tov', 0)
-        per_oreb_oreb_tov = transition_metrics.get('per_oreb_from_oreb_tov', 0)
-        per_opp_dreb_oreb_tov = transition_metrics.get('per_opp_dreb_from_oreb_tov', 0)
+        per_tov_oreb = transition_metrics['per_turnover_from_oreb']
+        per_2pt_tov = transition_metrics['per_2pt_made_from_offense_start_tov']
+        per_3pt_tov = transition_metrics['per_3pt_made_from_offense_start_tov']
+        per_ft_tov = transition_metrics['per_ft_made_from_offense_start_tov']
+        per_oreb_tov = transition_metrics['per_oreb_from_offense_start_tov']
+        per_opp_dreb_tov = transition_metrics['per_opp_dreb_from_offense_start_tov']
+        per_2pt_oreb_tov = transition_metrics['per_2pt_made_from_oreb_tov']
+        per_3pt_oreb_tov = transition_metrics['per_3pt_made_from_oreb_tov']
+        per_ft_oreb_tov = transition_metrics['per_ft_made_from_oreb_tov']
+        per_oreb_oreb_tov = transition_metrics['per_oreb_from_oreb_tov']
+        per_opp_dreb_oreb_tov = transition_metrics['per_opp_dreb_from_oreb_tov']
         
         adjustments.extend([
             {'state': f'{team} Offense Start', 'next_state': f'{team} Turnover', 
@@ -454,7 +439,7 @@ def calculate_all_adjustments(team: str, additional_vars: dict,
     # Team DREB adjustments
     if 'additional_dreb' in additional_vars:
         adj_dreb = additional_vars['additional_dreb']
-        per_dreb_opp_oreb = transition_metrics.get('per_dreb_from_opp_oreb', 0)
+        per_dreb_opp_oreb = transition_metrics['per_dreb_from_opp_oreb']
         
         adjustments.extend([
             {'state': 'OPP Offense Start', 'next_state': f'{team} DREB', 
@@ -470,7 +455,7 @@ def calculate_all_adjustments(team: str, additional_vars: dict,
     # Team OREB adjustments
     if 'additional_oreb' in additional_vars:
         adj_oreb = additional_vars['additional_oreb']
-        per_oreb_from_oreb = transition_metrics.get('per_oreb_from_oreb', 0)
+        per_oreb_from_oreb = transition_metrics['per_oreb_from_oreb']
         
         adjustments.extend([
             {'state': f'{team} Offense Start', 'next_state': f'{team} OREB', 
@@ -486,7 +471,7 @@ def calculate_all_adjustments(team: str, additional_vars: dict,
     # Opponent 2pt adjustments
     if 'opp_additional_shots_made_2' in additional_vars:
         adj_opp_2pt = additional_vars['opp_additional_shots_made_2']
-        per_2pt_oreb_opp = transition_metrics.get('per_2pt_made_from_oreb_opp', 0)
+        per_2pt_oreb_opp = transition_metrics['per_2pt_made_from_oreb_opp']
         
         adjustments.extend([
             {'state': 'OPP Offense Start', 'next_state': 'OPP 2pt Made', 
@@ -506,7 +491,7 @@ def calculate_all_adjustments(team: str, additional_vars: dict,
     # Opponent 3pt adjustments
     if 'opp_additional_shots_made_3' in additional_vars:
         adj_opp_3pt = additional_vars['opp_additional_shots_made_3']
-        per_3pt_oreb_opp = transition_metrics.get('per_3pt_made_from_oreb_opp', 0)
+        per_3pt_oreb_opp = transition_metrics['per_3pt_made_from_oreb_opp']
         
         adjustments.extend([
             {'state': 'OPP Offense Start', 'next_state': 'OPP 3pt Made', 
@@ -526,9 +511,9 @@ def calculate_all_adjustments(team: str, additional_vars: dict,
     # Opponent FT adjustments
     if 'opp_additional_shots_made_ft' in additional_vars:
         adj_opp_ft = additional_vars['opp_additional_shots_made_ft']
-        per_ft_offense_opp = transition_metrics.get('per_ft_made_from_offense_start_opp', 0)
-        per_ft_oreb_opp = transition_metrics.get('per_ft_made_from_oreb_opp', 0)
-        per_ft_made_opp = transition_metrics.get('per_ft_made_from_ft_made_opp', 0)
+        per_ft_offense_opp = transition_metrics['per_ft_made_from_offense_start_opp']
+        per_ft_oreb_opp = transition_metrics['per_ft_made_from_oreb_opp']
+        per_ft_made_opp = transition_metrics['per_ft_made_from_ft_made_opp']
         
         adjustments.extend([
             {'state': 'OPP Offense Start', 'next_state': 'OPP FT Made', 
@@ -553,18 +538,19 @@ def calculate_all_adjustments(team: str, additional_vars: dict,
     
     # Opponent turnover adjustments
     if 'opp_additional_turnovers' in additional_vars:
+        print("    Processing opponent turnover adjustments")
         adj_opp_tov = additional_vars['opp_additional_turnovers']
-        per_tov_oreb_opp = transition_metrics.get('per_turnover_from_oreb_opp', 0)
-        per_2pt_offense_tov_opp = transition_metrics.get('per_2pt_made_from_offense_start_tov_opp', 0)
-        per_3pt_offense_tov_opp = transition_metrics.get('per_3pt_made_from_offense_start_tov_opp', 0)
-        per_ft_offense_tov_opp = transition_metrics.get('per_ft_made_from_offense_start_tov_opp', 0)
-        per_oreb_offense_tov_opp = transition_metrics.get('per_oreb_from_offense_start_tov_opp', 0)
-        per_dreb_offense_tov_opp = transition_metrics.get('per_dreb_from_offense_start_tov_opp', 0)
-        per_2pt_oreb_tov_opp = transition_metrics.get('per_2pt_made_from_oreb_tov_opp', 0)
-        per_3pt_oreb_tov_opp = transition_metrics.get('per_3pt_made_from_oreb_tov_opp', 0)
-        per_ft_oreb_tov_opp = transition_metrics.get('per_ft_made_from_oreb_tov_opp', 0)
-        per_oreb_oreb_tov_opp = transition_metrics.get('per_oreb_from_oreb_tov_opp', 0)
-        per_dreb_oreb_tov_opp = transition_metrics.get('per_dreb_from_oreb_tov_opp', 0)
+        per_tov_oreb_opp = transition_metrics['per_turnover_from_oreb_opp']
+        per_2pt_offense_tov_opp = transition_metrics['per_2pt_made_from_offense_start_tov_opp']
+        per_3pt_offense_tov_opp = transition_metrics['per_3pt_made_from_offense_start_tov_opp']
+        per_ft_offense_tov_opp = transition_metrics['per_ft_made_from_offense_start_tov_opp']
+        per_oreb_offense_tov_opp = transition_metrics['per_oreb_from_offense_start_tov_opp']
+        per_dreb_offense_tov_opp = transition_metrics['per_dreb_from_offense_start_tov_opp']
+        per_2pt_oreb_tov_opp = transition_metrics['per_2pt_made_from_oreb_tov_opp']
+        per_3pt_oreb_tov_opp = transition_metrics['per_3pt_made_from_oreb_tov_opp']
+        per_ft_oreb_tov_opp = transition_metrics['per_ft_made_from_oreb_tov_opp']
+        per_oreb_oreb_tov_opp = transition_metrics['per_oreb_from_oreb_tov_opp']
+        per_dreb_oreb_tov_opp = transition_metrics['per_dreb_from_oreb_tov_opp']
         
         adjustments.extend([
             {'state': 'OPP Offense Start', 'next_state': 'OPP Turnover', 
@@ -596,7 +582,7 @@ def calculate_all_adjustments(team: str, additional_vars: dict,
     # Opponent DREB adjustments
     if 'opp_additional_dreb' in additional_vars:
         adj_opp_dreb = additional_vars['opp_additional_dreb']
-        per_opp_dreb_from_oreb = transition_metrics.get('per_opp_dreb_from_oreb', 0)
+        per_opp_dreb_from_oreb = transition_metrics['per_opp_dreb_from_oreb']
         
         adjustments.extend([
             {'state': f'{team} Offense Start', 'next_state': 'OPP DREB', 
@@ -612,7 +598,7 @@ def calculate_all_adjustments(team: str, additional_vars: dict,
     # Opponent OREB adjustments
     if 'opp_additional_oreb' in additional_vars:
         adj_opp_oreb = additional_vars['opp_additional_oreb']
-        per_opp_oreb_from_oreb_opp = transition_metrics.get('per_opp_oreb_from_oreb_opp', 0)
+        per_opp_oreb_from_oreb_opp = transition_metrics['per_opp_oreb_from_oreb_opp']
         
         adjustments.extend([
             {'state': 'OPP Offense Start', 'next_state': 'OPP OREB', 
@@ -719,9 +705,9 @@ def main():
             # Step 4: Calculate transition metrics from actual data
             transition_metrics = baseline_data['transition_metrics']
             
-            # Add team and season columns to transitions DataFrame
-            baseline_data['transitions']['team'] = team
-            baseline_data['transitions']['season'] = season
+                # Add team and season columns to transitions DataFrame
+    baseline_data['transitions']['team'] = team
+    baseline_data['transitions']['season'] = season
             
             # Step 5: Process each adjustment type separately
             team_results = []
@@ -737,19 +723,7 @@ def main():
                 
                 # Create a filtered additional_vars for this specific metric
                 filtered_vars = {}
-                if '2PT FG%' in adjustment_type:
-                    filtered_vars = {'additional_shots_made_2': additional_vars['additional_shots_made_2']}
-                elif '3PT FG%' in adjustment_type:
-                    filtered_vars = {'additional_shots_made_3': additional_vars['additional_shots_made_3']}
-                elif 'FT%' in adjustment_type:
-                    filtered_vars = {'additional_shots_made_ft': additional_vars['additional_shots_made_ft']}
-                elif 'OREB%' in adjustment_type:
-                    filtered_vars = {'additional_oreb': additional_vars['additional_oreb']}
-                elif 'DREB%' in adjustment_type:
-                    filtered_vars = {'additional_dreb': additional_vars['additional_dreb']}
-                elif 'TOV%' in adjustment_type:
-                    filtered_vars = {'additional_turnovers': additional_vars['additional_turnovers']}
-                elif 'OPP 2PT FG%' in adjustment_type:
+                if 'OPP 2PT FG%' in adjustment_type:
                     filtered_vars = {'opp_additional_shots_made_2': additional_vars['opp_additional_shots_made_2']}
                 elif 'OPP 3PT FG%' in adjustment_type:
                     filtered_vars = {'opp_additional_shots_made_3': additional_vars['opp_additional_shots_made_3']}
@@ -761,6 +735,18 @@ def main():
                     filtered_vars = {'opp_additional_dreb': additional_vars['opp_additional_dreb']}
                 elif 'OPP TOV%' in adjustment_type:
                     filtered_vars = {'opp_additional_turnovers': additional_vars['opp_additional_turnovers']}
+                elif '2PT FG%' in adjustment_type:
+                    filtered_vars = {'additional_shots_made_2': additional_vars['additional_shots_made_2']}
+                elif '3PT FG%' in adjustment_type:
+                    filtered_vars = {'additional_shots_made_3': additional_vars['additional_shots_made_3']}
+                elif 'FT%' in adjustment_type:
+                    filtered_vars = {'additional_shots_made_ft': additional_vars['additional_shots_made_ft']}
+                elif 'OREB%' in adjustment_type:
+                    filtered_vars = {'additional_oreb': additional_vars['additional_oreb']}
+                elif 'DREB%' in adjustment_type:
+                    filtered_vars = {'additional_dreb': additional_vars['additional_dreb']}
+                elif 'TOV%' in adjustment_type:
+                    filtered_vars = {'additional_turnovers': additional_vars['additional_turnovers']}
                 
                 # Get adjustments for this specific metric only
                 adjustments = calculate_all_adjustments(team, filtered_vars, transition_metrics, improved_metrics)
