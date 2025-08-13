@@ -41,14 +41,25 @@ app.add_middleware(
 # Initialize DuckDB connection to the database
 DB_PATH = os.getenv("DB_PATH", "nba_clean.db")
 
-try:
-    conn = duckdb.connect(DB_PATH, read_only=True)
-except Exception as e:
-    print(f"Error connecting to database: {e}")
-    raise
+# Lazy database connection - will be established when first needed
+conn = None
+simulator = None
 
-# Initialize simulator
-simulator = MarkovSimulator(conn)
+def get_db_connection():
+    global conn
+    if conn is None:
+        try:
+            conn = duckdb.connect(DB_PATH, read_only=True)
+        except Exception as e:
+            print(f"Error connecting to database: {e}")
+            raise
+    return conn
+
+def get_simulator():
+    global simulator
+    if simulator is None:
+        simulator = MarkovSimulator(get_db_connection())
+    return simulator
 
 class AdjustmentRequest(BaseModel):
     team: str
@@ -63,7 +74,7 @@ async def root():
 async def health_check():
     try:
         # Test the database connection
-        conn.execute("SELECT 1").fetchone()
+        get_db_connection().execute("SELECT 1").fetchone()
         return {"status": "healthy", "database": "connected"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database connection error: {str(e)}")
@@ -89,7 +100,7 @@ async def cancel_simulation(request: dict):
 async def get_teams():
     """Get list of available teams"""
     try:
-        teams = conn.execute("SELECT DISTINCT team FROM agg_team_txn_cnts ORDER BY team").fetchdf()
+        teams = get_db_connection().execute("SELECT DISTINCT team FROM agg_team_txn_cnts ORDER BY team").fetchdf()
         return {"teams": teams['team'].tolist()}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching teams: {str(e)}")
@@ -99,7 +110,7 @@ async def get_baseline_wins(season: str = '2024-25'):
     """Get baseline simulated wins for all teams from database for a specific season"""
     try:
         query = "SELECT team, wins FROM estimated_wins_simulated WHERE season = ? ORDER BY team"
-        result = conn.execute(query, [season]).fetchdf()
+        result = get_db_connection().execute(query, [season]).fetchdf()
         
         # Convert to dictionary format
         baseline_wins = {}
@@ -115,7 +126,7 @@ async def get_available_seasons():
     """Get all available seasons from the database"""
     try:
         query = "SELECT DISTINCT season FROM agg_team_txn_cnts ORDER BY season"
-        result = conn.execute(query).fetchdf()
+        result = get_db_connection().execute(query).fetchdf()
         
         seasons = result['season'].tolist() if not result.empty else []
         return {"seasons": seasons}
@@ -152,7 +163,7 @@ async def get_season_metrics(season: str = '2024-25'):
         where cb.season = ?
         """
         
-        result = conn.execute(query, [season]).fetchdf()
+        result = get_db_connection().execute(query, [season]).fetchdf()
         
         # Calculate min, median, max for each metric
         metrics_stats = {}
@@ -181,7 +192,7 @@ async def get_transition_matrix_adjustment_metrics(team: str, season: str = '202
     """Get transition matrix adjustment metrics for a specific team and season"""
     try:
         query = "SELECT * FROM team_transition_matrix_adjustments_rates WHERE team = ? AND season = ?"
-        result = conn.execute(query, [team, season]).fetchdf()
+        result = get_db_connection().execute(query, [team, season]).fetchdf()
         
         if result.empty:
             raise HTTPException(status_code=404, detail=f"No data found for team: {team} and season: {season}")
@@ -202,7 +213,7 @@ async def simulate_season(request: dict):
             raise HTTPException(status_code=400, detail="Team parameter is required")
         
         # Validate team exists
-        team_check = conn.execute("SELECT COUNT(*) FROM agg_team_txn_cnts WHERE team = ? AND season = ?", [team, season]).fetchone()
+        team_check = get_db_connection().execute("SELECT COUNT(*) FROM agg_team_txn_cnts WHERE team = ? AND season = ?", [team, season]).fetchone()
         if team_check[0] == 0:
             raise HTTPException(status_code=404, detail=f"Team {team} not found in database for season {season}")
         
@@ -263,7 +274,7 @@ async def simulate_season(request: dict):
         }
         
         # Initialize simulator and run simulation
-        simulator = MarkovSimulator(conn)
+        simulator = get_simulator()
         results = simulator.simulate_multiple_seasons(
             team, num_seasons, additional_vars, transition_metrics, adjusted_metrics
         )
@@ -457,7 +468,7 @@ async def simulate_with_adjustments(request: dict):
             raise HTTPException(status_code=400, detail="Team parameter is required")
         
         # Validate team exists
-        team_check = conn.execute("SELECT COUNT(*) FROM agg_team_txn_cnts WHERE team = ? AND season = ?", [team, season]).fetchone()
+        team_check = get_db_connection().execute("SELECT COUNT(*) FROM agg_team_txn_cnts WHERE team = ? AND season = ?", [team, season]).fetchone()
         if team_check[0] == 0:
             raise HTTPException(status_code=404, detail=f"Team {team} not found in database for season {season}")
         
@@ -469,7 +480,7 @@ async def simulate_with_adjustments(request: dict):
         transition_metrics = _metrics_cache[cache_key]
         
         # Initialize simulator and run simulation with adjustments
-        simulator = MarkovSimulator(conn)
+        simulator = get_simulator()
         results = simulator.simulate_multiple_seasons(
             team, num_seasons, additional_vars, transition_metrics, adjusted_metrics
         )
@@ -507,7 +518,7 @@ async def simulate_with_adjustments_stream(request: dict):
         _active_simulations[team] = False
         
         # Initialize simulator
-        simulator = MarkovSimulator(conn)
+        simulator = get_simulator()
         
         # Simulate seasons with adjustments
         results = simulator.simulate_multiple_seasons(
@@ -551,8 +562,7 @@ async def generate_adjustments(request: AdjustmentRequest):
     """Generate transition matrix adjustments for a specific team"""
     try:
         # Connect to database
-        DB_PATH = os.getenv("DB_PATH", "nba_clean.db")
-        conn = duckdb.connect(DB_PATH, read_only=True)
+        conn = get_db_connection()
         
         # Get baseline data
         baseline_data = get_baseline_data(conn, request.team, request.season)
@@ -621,14 +631,12 @@ async def generate_adjustments(request: AdjustmentRequest):
 async def get_teams(season: str = "2024-25"):
     """Get list of available teams"""
     try:
-        DB_PATH = os.getenv("DB_PATH", "nba_clean.db")
-        conn = duckdb.connect(DB_PATH, read_only=True)
+        conn = get_db_connection()
         
         teams_query = "SELECT DISTINCT team FROM agg_team_txn_cnts WHERE season = ? ORDER BY team"
         teams_df = conn.execute(teams_query, [season]).fetchdf()
         teams = teams_df['team'].tolist()
         
-        conn.close()
         return {"teams": teams, "season": season}
         
     except Exception as e:
