@@ -24,6 +24,13 @@ _metrics_cache = {}
 # Global cancellation tracking
 _active_simulations = {}
 
+# Additional caches for performance
+_teams_cache = {}
+_baseline_wins_cache = {}
+_season_metrics_cache = {}
+_transition_metrics_cache = {}
+_team_validation_cache = {}
+
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
@@ -100,8 +107,18 @@ async def cancel_simulation(request: dict):
 async def get_teams():
     """Get list of available teams"""
     try:
+        # Check cache first
+        if 'teams' in _teams_cache:
+            return {"teams": _teams_cache['teams'], "season": "2024-25"}
+        
+        # Fetch from database
         teams = get_db_connection().execute("SELECT DISTINCT team FROM agg_team_txn_cnts ORDER BY team").fetchdf()
-        return {"teams": teams['team'].tolist()}
+        teams_list = teams['team'].tolist()
+        
+        # Cache the result
+        _teams_cache['teams'] = teams_list
+        
+        return {"teams": teams_list, "season": "2024-25"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching teams: {str(e)}")
 
@@ -109,6 +126,11 @@ async def get_teams():
 async def get_baseline_wins(season: str = '2024-25'):
     """Get baseline simulated wins for all teams from database for a specific season"""
     try:
+        # Check cache first
+        cache_key = f'baseline_wins_{season}'
+        if cache_key in _baseline_wins_cache:
+            return {"baseline_wins": _baseline_wins_cache[cache_key]}
+        
         query = "SELECT team, wins FROM estimated_wins_simulated WHERE season = ? ORDER BY team"
         result = get_db_connection().execute(query, [season]).fetchdf()
         
@@ -116,6 +138,9 @@ async def get_baseline_wins(season: str = '2024-25'):
         baseline_wins = {}
         for _, row in result.iterrows():
             baseline_wins[row['team']] = float(row['wins'])
+        
+        # Cache the result
+        _baseline_wins_cache[cache_key] = baseline_wins
         
         return {"baseline_wins": baseline_wins}
     except Exception as e:
@@ -137,6 +162,10 @@ async def get_available_seasons():
 async def get_season_metrics(season: str = '2024-25'):
     """Get season-end team metrics for a specific season"""
     try:
+        # Check cache first
+        if season in _season_metrics_cache:
+            return _season_metrics_cache[season]
+        
         query = """
         with cte_box as (
         select season, team_abbreviation, fga-fg3a as fg2a, fgm-fg3m as fg2m, fg2m/fg2a as fg2_pct, fg3a, fg3m, fg3_pct, fta, ftm, ft_pct, dreb, oreb, tov
@@ -180,10 +209,13 @@ async def get_season_metrics(season: str = '2024-25'):
                         'max': float(values.max())
                     }
         
-        return {
+        # Cache the result
+        _season_metrics_cache[season] = {
             "metrics": result.to_dict('records'),
             "stats": metrics_stats
         }
+        
+        return _season_metrics_cache[season]
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching season metrics: {str(e)}")
 
@@ -191,13 +223,21 @@ async def get_season_metrics(season: str = '2024-25'):
 async def get_transition_matrix_adjustment_metrics(team: str, season: str = '2024-25'):
     """Get transition matrix adjustment metrics for a specific team and season"""
     try:
+        # Check cache first
+        cache_key = f'transition_metrics_{team}_{season}'
+        if cache_key in _transition_metrics_cache:
+            return {"metrics": _transition_metrics_cache[cache_key]}
+        
         query = "SELECT * FROM team_transition_matrix_adjustments_rates WHERE team = ? AND season = ?"
         result = get_db_connection().execute(query, [team, season]).fetchdf()
         
         if result.empty:
             raise HTTPException(status_code=404, detail=f"No data found for team: {team} and season: {season}")
         
-        return {"metrics": result.to_dict('records')[0]}
+        # Cache the result
+        _transition_metrics_cache[cache_key] = result.to_dict('records')[0]
+        
+        return {"metrics": _transition_metrics_cache[cache_key]}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching transition matrix adjustment metrics: {str(e)}")
 
