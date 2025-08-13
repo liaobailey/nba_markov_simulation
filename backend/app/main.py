@@ -61,13 +61,12 @@ def get_db_connection():
     if conn is None:
         try:
             conn = duckdb.connect(DB_PATH, read_only=True)
-            # Aggressive performance optimizations for $7 tier
+            # Conservative performance optimizations for $7 tier
             conn.execute("SET enable_progress_bar=false")
-            conn.execute("SET threads=4")  # More threads with $7 tier
-            conn.execute("SET memory_limit='2GB'")  # More memory with $7 tier
+            conn.execute("SET threads=3")  # Conservative thread count
+            conn.execute("SET memory_limit='1GB'")  # Conservative memory limit
             conn.execute("SET enable_optimizer=true")
-            conn.execute("SET preserve_insertion_order=false")
-            print(f"Database connected with aggressive optimizations for $7 tier")
+            print(f"Database connected with conservative optimizations for $7 tier")
         except Exception as e:
             print(f"Error connecting to database: {e}")
             raise

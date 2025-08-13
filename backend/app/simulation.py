@@ -603,8 +603,8 @@ class MarkovSimulator:
         all_expected_wins = []
         
         # Pre-allocate arrays for better performance
-        seasons_data = [None] * num_seasons
-        all_expected_wins = [0.0] * num_seasons
+        seasons_data = []
+        all_expected_wins = []
         
         for season in range(num_seasons):
             # Simulate 82 games directly without rebuilding transition matrix
@@ -619,14 +619,14 @@ class MarkovSimulator:
             final_wins = round((wins / 82) * 82, 2)
             win_pct = round(wins / 82, 3)
             
-            seasons_data[season] = {
+            seasons_data.append({
                 "season": season + 1,
                 "final_expected_wins": final_wins,
                 "total_wins": wins,
                 "win_percentage": win_pct
-            }
+            })
             
-            all_expected_wins[season] = final_wins
+            all_expected_wins.append(final_wins)
         
         # Calculate statistics
         avg_wins = np.mean(all_expected_wins)
