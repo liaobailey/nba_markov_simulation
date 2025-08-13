@@ -580,14 +580,26 @@ class MarkovSimulator:
                                 additional_vars: dict = None, transition_metrics: dict = None, 
                                 adjusted_metrics: dict = None) -> Dict[str, Any]:
         """Simulate multiple seasons and return all results - optimized version"""
-        # Build transition matrix once and reuse for all seasons - optimized query
-        agg_team = self.conn.execute(
-            "SELECT state, next_state, count, poss_per_game FROM agg_team_txn_cnts WHERE team = ?", 
-            [team]
-        ).fetchdf()
         
-        if agg_team.empty:
-            raise ValueError(f"No data found for team: {team}")
+        # Check cache first - this is the key to local performance!
+        cache_key = f"agg_team_{team}"
+        if cache_key in self._transition_matrix_cache:
+            print(f"🎯 Using cached team data for {team} - this should be fast!")
+            agg_team = self._transition_matrix_cache[cache_key]
+        else:
+            print(f"🔄 Loading fresh team data for {team} - this will be slower...")
+            # Build transition matrix once and reuse for all seasons - optimized query
+            agg_team = self.conn.execute(
+                "SELECT state, next_state, count, poss_per_game FROM agg_team_txn_cnts WHERE team = ?", 
+                [team]
+            ).fetchdf()
+            
+            if agg_team.empty:
+                raise ValueError(f"No data found for team: {team}")
+            
+            # Cache the team data for future seasons
+            self._transition_matrix_cache[cache_key] = agg_team
+            print(f"💾 Cached team data for {team} - future seasons will be fast!")
         
         transition_matrix = self.build_transition_matrix(
             agg_team, team, additional_vars, transition_metrics, adjusted_metrics
