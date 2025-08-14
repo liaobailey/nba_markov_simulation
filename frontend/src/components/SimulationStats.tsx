@@ -35,7 +35,7 @@ const SimulationStats: React.FC<SimulationStatsProps> = ({ stats, selectedTeam, 
         {/* Baseline Simulated Wins */}
         <Grid item xs={12} sm={6} md={2}>
           <Box textAlign="center">
-            <Typography variant="h4" color="info.main" fontWeight="bold">
+            <Typography variant="h4" color="text.primary" fontWeight="bold">
               {baselineWinsForTeam.toFixed(1)}
             </Typography>
             <Typography variant="body2" color="text.secondary">
@@ -51,7 +51,7 @@ const SimulationStats: React.FC<SimulationStatsProps> = ({ stats, selectedTeam, 
         {/* Actual Wins */}
         <Grid item xs={12} sm={6} md={2}>
           <Box textAlign="center">
-            <Typography variant="h4" color="success.main" fontWeight="bold">
+            <Typography variant="h4" color="text.primary" fontWeight="bold">
               {actualWins}
             </Typography>
             <Typography variant="body2" color="text.secondary">
@@ -67,7 +67,7 @@ const SimulationStats: React.FC<SimulationStatsProps> = ({ stats, selectedTeam, 
         {/* Standard Deviation */}
         <Grid item xs={12} sm={6} md={2}>
           <Box textAlign="center">
-            <Typography variant="h4" color="secondary" fontWeight="bold">
+            <Typography variant="h4" color="primary" fontWeight="bold">
               {stats.standard_deviation}
             </Typography>
             <Typography variant="body2" color="text.secondary">
@@ -79,7 +79,7 @@ const SimulationStats: React.FC<SimulationStatsProps> = ({ stats, selectedTeam, 
         {/* 95% Confidence */}
         <Grid item xs={12} sm={6} md={2}>
           <Box textAlign="center">
-            <Typography variant="h4" color="info.main" fontWeight="bold">
+            <Typography variant="h4" color="primary" fontWeight="bold">
               {stats.confidence_interval_95}
             </Typography>
             <Typography variant="body2" color="text.secondary">
@@ -91,7 +91,7 @@ const SimulationStats: React.FC<SimulationStatsProps> = ({ stats, selectedTeam, 
         {/* Min - Max Wins */}
         <Grid item xs={12} sm={6} md={2}>
           <Box textAlign="center">
-            <Typography variant="h4" color="warning.main" fontWeight="bold">
+            <Typography variant="h4" color="primary" fontWeight="bold">
             {stats.min_wins} - {stats.max_wins}
             </Typography>
             <Typography variant="body2" color="text.secondary">
